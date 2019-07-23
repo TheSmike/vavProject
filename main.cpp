@@ -10,6 +10,7 @@
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include <Eigen/SVD>
 #include <Eigen/LU>
@@ -52,7 +53,7 @@ int main(int argc, char **argv) {
     std::vector <Eigen::Vector2d> cur_l;
     
     //<NUMERO FOTOGRAMMA> <ID PUNTO> <X LEFT> <Y LEFT>  <X RIGHT> <Y RIGHT>
-    for (int i = 0; i < elementiFile){
+    for (int i = 0; i < elementiFile; i++ ){
       
     }
     
