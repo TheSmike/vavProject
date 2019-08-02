@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 2.6)
-project(vav_proj)
+project(vavProject)
 
-add_executable(vav_proj main.cpp)
+add_executable(vavProject main.cpp)
 
-install(TARGETS vav_proj RUNTIME DESTINATION bin)
+install(TARGETS vavProject RUNTIME DESTINATION bin)
 
 find_package(Eigen)
 
