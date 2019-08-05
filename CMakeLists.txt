@@ -3,16 +3,23 @@ project(vavProject)
 
 add_executable(vavProject main.cpp)
 
+set(EIGEN_INCLUDE_DIR "/usr/include/eigen3")
+
 install(TARGETS vavProject RUNTIME DESTINATION bin)
 
 find_package(Eigen)
+#find_package(Ceres REQUIRED)
+find_package(Ceres)
+
 
 include_directories(
 #     ${CMAKE_SOURCE_DIR}/src
 #     ${GOLD_CONFIG_HEADERS_DIR}
 #     ${GOLD_INCLUDE_DIR}
 #     ${EIGEN_INCLUDE_DIR}
+      #/usr/include/ceres
       /usr/include/eigen3
+      ${CERES_INCLUDE_DIRS}
 #     ${Boost_INCLUDE_DIR}
 )
 
@@ -20,16 +27,19 @@ include_directories(
 # add_library(gold_app_dummy dummy.cpp)
 
 # elenco delle librerie richieste da questa applicazione
-# target_link_libraries( gold_app_dummy
+ target_link_libraries( 
+      vavProject
 #     ${GOLD_LIBRARIES}
 #     ${Boost_SERIALIZATION_LIBRARY}
 #     ${Boost_SIGNALS_LIBRARY}
 #     ${Boost_SYSTEM_LIBRARY}
 #     ${Boost_THREAD_LIBRARY}
-#     ceres # da aggiungere
-#     glog  # 
-# )
+      ceres 
+      glog
+ )
 
+
+ 
 # mette il binario nella cartella dei plugind di gold
 # message ("GOLD_PLUGINS_DIR=${GOLD_PLUGINS_DIR}")
 
