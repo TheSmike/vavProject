@@ -22,7 +22,7 @@ using namespace std;
 using namespace Eigen;
 
 static const int DISPARITY_THRESHOLD = 1;
-static const int BREAK_PT = -1;
+static const int BREAK_PT = 100;
 
 //functions declariation
 void compute3DCameraPoints(std::map<int, KeyPointMatch> & frame);
@@ -165,7 +165,10 @@ int main(int argc, char **argv) {
     Eigen::Matrix3d Ri;
     Eigen::Vector3d ti;
     /// file di serializzazione output
-    std::ofstream m_out;
+    std::ofstream m_out, m_out_camera;
+    
+    std::vector <Matrix3d> Rc_list;
+    std::vector <Vector3d> tc_list;
     
     Ri.setIdentity();
     ti.setConstant(0);
@@ -197,8 +200,13 @@ int main(int argc, char **argv) {
 	ti = Ri * t + ti;
 	Ri = Ri * R;
 	
+	Rc_list.push_back(R);
+	tc_list.push_back(t);	
+	
+	
 	for(int i=0;i<3;++i) {
 	  m_out << Ri(i,0) << ' ' << Ri(i,1) << ' ' << Ri(i,2) << ' ' << ti[i] << ' ';
+	  m_out_camera << R(i,0) << ' ' << R(i,1) << ' ' << R(i,2) << ' ' << t[i] << ' ';
 	}
 	m_out << std::endl;
 	
@@ -208,14 +216,23 @@ int main(int argc, char **argv) {
 	break;
     }
     
-    
-    
-    
     t2 = time(NULL);
     cout << "end computation!" << endl;
     cout << "execution time: " << (t2-t1) << " s" << endl;
     
     m_out.close();
+    
+    
+    
+    t1 = time(NULL);
+    cout << "Start computation part 2 ..." << endl;
+    
+    
+    
+    t2 = time(NULL);
+    cout << "end computation part 2!" << endl;
+    cout << "execution time: " << (t2-t1) << " s" << endl
+        
     
     cout << "------------  END  ------------" << endl;
     return 0;
