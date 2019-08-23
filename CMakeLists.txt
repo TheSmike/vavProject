@@ -46,3 +46,9 @@ include_directories(
 # TODO: qui ci vuole una directory di output diversa se stiamo impacchettando o installando
 # set_target_properties(gold_app_dummy PROPERTIES LIBRARY_OUTPUT_DIRECTORY ${GOLD_DEV_PLUGINS_DIR})
 # install( TARGETS gold_app_dummy DESTINATION ${GOLD_PLUGINS_DIR} COMPONENT RunTime)
+
+#set_target_properties(vavProject PROPERTIES
+#    CXX_STANDARD 11
+#    CXX_STANDARD_REQUIRED ON
+#    CXX_EXTENSIONS ON
+#)
