@@ -50,6 +50,8 @@ public:
       residuals[1] = ( T(kpm.left.y()) - pred[1]) ;
       residuals[2] = ( T(kpm.right.x()) - pred[2]) ;
       residuals[3] = ( T(kpm.right.y()) - pred[3]) ;
+      
+      return true;
     
   }
   

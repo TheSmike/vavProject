@@ -20,3 +20,11 @@ public:
   }
   
 };
+
+std::ostream& operator<<(std::ostream &strm, const Array3dContainer &a) {
+  if (a.isNull)
+    return strm << "NULL";
+  else
+    return strm << "values = " << a.values[0] << " " << a.values[1] << " " << a.values[2] << " ";
+  
+}

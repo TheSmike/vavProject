@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <time.h>
+#include <float.h>
 
 #include <ceres/ceres.h>
 #include <ceres/rotation.h>
@@ -25,14 +26,16 @@ using namespace std;
 using namespace Eigen;
 
 static const int DISPARITY_THRESHOLD = 1;
-int BREAK_PT = 25;
+int KEY_DEBUG = 5;
+int BREAK_PT;
 
 //functions declariation
 void compute3DCameraPoints(std::map<int, KeyPointMatch> & frame);
 void computeRotationAndTranslation(std::map<int, KeyPointMatch> & cur, std::map<int, KeyPointMatch> & prev, Eigen::Matrix3d & R, Eigen::Vector3d & t); 
 void computeBundleAdjustment(double pose_list[][6], std::vector<Array3dContainer> & pt3d_glob_list, std::map<int, KeyPointMatch> frames[], int numeroFotogrammi, int puntiUnici);
 int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & ti_list, std::map<int, KeyPointMatch> frames[], int puntiUnici, int numeroFotogrammi, std::vector<Array3dContainer> & pt3d_glob_list);
-void write3dPoint(std::vector<Array3dContainer> & pt3d_glob_list, int puntiUnici);  
+void write3dPoint(std::vector<Array3dContainer> & pt3d_glob_list, int puntiUnici, int index);  
+void writePoses(double pose_list[][6], int numeroFotogrammi);
 
 template <typename T>
 bool Predict(const T*param, const KeyPointMatch & prevPt, T *pred) {
@@ -200,8 +203,10 @@ int main(int argc, char **argv) {
     double pose_list[numeroFotogrammi][6];
     
     
+    R.setIdentity();
     Ri.setIdentity();
-    ti.setConstant(0);
+    ti.setConstant(0.0);
+    t.setConstant(0.0);
     m_out.open("/tmp/ms.txt");
     m_out_camera.open("/tmp/ms2.txt");
 
@@ -217,6 +222,7 @@ int main(int argc, char **argv) {
       std::map<int, KeyPointMatch> & cur = frames[f];
       //converto i punti attuali in coordinate camera 3d tramite la disparità
       compute3DCameraPoints(cur);
+      
       if(f==0){
 	cout << cur[0] << endl << cur[1] << endl;
 	Ri_list.push_back(Ri);
@@ -248,15 +254,16 @@ int main(int argc, char **argv) {
 	pose_list[f][4] = ti[1];
 	pose_list[f][5] = ti[2];
 	
-	for(int i=0;i<3;++i) {
-	  m_out << Ri(i,0) << ' ' << Ri(i,1) << ' ' << Ri(i,2) << ' ' << ti[i] << ' ';
-	  m_out_camera << R(i,0) << ' ' << R(i,1) << ' ' << R(i,2) << ' ' << t[i] << ' ';
-	}
-	m_out << std::endl;
-	m_out_camera << std::endl;
 	
       }
            
+      for(int i=0;i<3;++i) {
+	m_out << Ri(i,0) << ' ' << Ri(i,1) << ' ' << Ri(i,2) << ' ' << ti[i] << ' ';
+	m_out_camera << R(i,0) << ' ' << R(i,1) << ' ' << R(i,2) << ' ' << t[i] << ' ';
+      }
+      m_out << std::endl;
+      m_out_camera << std::endl;
+	
       if (f == BREAK_PT)
 	break;
     }
@@ -268,12 +275,8 @@ int main(int argc, char **argv) {
     m_out.close();
     m_out_camera.close();
     
-    
-    
-    
-    t1 = time(NULL);
-    cout << "Start computation BA ..." << endl;
-    
+
+    cout << "Print 3dPoint global to file ... \n";
     //cout << "not in function " << frames << endl;
     cout << puntiUnici << endl;
     
@@ -281,17 +284,18 @@ int main(int argc, char **argv) {
     std::vector<Array3dContainer> pt3d_glob_list;
     pt3d_glob_list.resize(puntiUnici, Array3dContainer());
     
-    //cout << "init " << endl;
-//     pt3d_glob_list[0][0] = 1.0;
-//     cout << pt3d_glob_list[0][0];
-
-    //int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & ti_list, std::map<int, KeyPointMatch> frames[], int puntiUnici, int numeroFotogrammi, double output[][3]);
     int ptsNumber = compute3DGlobal(Ri_list, ti_list, frames, puntiUnici, numeroFotogrammi, pt3d_glob_list);
-    write3dPoint(pt3d_glob_list, ptsNumber);
-    //void computeBundleAdjustment(double pose_list[][6], double pt3d_glob_list[][3], std::map<int, KeyPointMatch> & frames[], int numeroFotogrammi, int puntiUnici);
+    write3dPoint(pt3d_glob_list, ptsNumber, 0);
+    cout << "printed \n";
+
+    
+    
+    t1 = time(NULL);
+    cout << "Start computation BA ..." << endl;
+        //void computeBundleAdjustment(double pose_list[][6], double pt3d_glob_list[][3], std::map<int, KeyPointMatch> & frames[], int numeroFotogrammi, int puntiUnici);
     computeBundleAdjustment(pose_list, pt3d_glob_list, frames, numeroFotogrammi, ptsNumber); //TODO 
-    
-    
+    write3dPoint(pt3d_glob_list, ptsNumber, 1);
+    writePoses(pose_list, numeroFotogrammi);
     
     
     t2 = time(NULL);
@@ -442,6 +446,8 @@ void computeRotationAndTranslation(std::map<int, KeyPointMatch> & cur, std::map<
 int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & ti_list, std::map<int, KeyPointMatch> frames[], int puntiUnici, int numeroFotogrammi, std::vector<Array3dContainer> & pt3d_glob_list){
   
   int counter = -1;
+  std::vector<double> z_min_list; 
+  z_min_list.resize(puntiUnici, DBL_MAX);
   
   std::map<int, KeyPointMatch>::iterator it;
       
@@ -451,6 +457,9 @@ int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & t
   int notCompute = 0;
   int counttmp = 0;
 
+  KeyPointMatch kpm_debug; 
+  int frame_debug;
+  
   for(int f = 0; f < numeroFotogrammi; f++){
     map<int, KeyPointMatch> frame = frames[f];
     std::map<int, KeyPointMatch>::iterator it;
@@ -463,11 +472,14 @@ int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & t
 // 	exit(1);
 //       }
       
-      if ( pt3d_glob_list[key].isNull 
-	   && !(kpm.pt3d.x() == 0.0 && kpm.pt3d.y() == 0.0 && kpm.pt3d.z() == -1.0)
-	   && kpm.w < 8 ){
+      if ( (pt3d_glob_list[key].isNull || z_min_list[key] > kpm.pt3d.z())
+	    && !(kpm.pt3d.x() == 0.0 && kpm.pt3d.y() == 0.0 && kpm.pt3d.z() == -1.0)
+	   && kpm.w < 8 ) {
 	
-	counter++;
+	if(pt3d_glob_list[key].isNull)
+	  counter++;
+	
+	
 
 	Matrix3d Rt = Ri_list[f].transpose().eval();
 	Vector3d t_inv = -Rt * ti_list[f];
@@ -484,7 +496,7 @@ int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & t
       
 	pt3d_glob_list[key] = Array3dContainer(pt3d_glob[0], pt3d_glob[1], pt3d_glob[2]);
     
-	if (counttmp < 1){
+	if (counttmp < 0){
 	  cout << "TMP 3D GLOBAL log:\n" 
 	      << "3DLoc = " << kpm.pt3d << endl
 	      << "Ri    = " << Ri_list[f] << endl
@@ -495,7 +507,14 @@ int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & t
 	      counttmp++;
 	}
 	
+	z_min_list[key] = kpm.pt3d.z();
 	compute++;
+	
+	if (key == KEY_DEBUG){
+	  kpm_debug = kpm;
+	  frame_debug = f;
+	  cout << "frame : " << f << ", key " << KEY_DEBUG << " : " << pt3d_glob_list[KEY_DEBUG] << endl << kpm_debug << endl;
+	}
       }
       else{
 	notCompute++;
@@ -507,6 +526,7 @@ int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & t
   cout << "computed " << compute << " 3D global points\n" 
        << "skipped  " << notCompute << " 3D global points\n";
   
+ cout << "frame : " << frame_debug << ", key " << KEY_DEBUG << " : FINAL value --> " << pt3d_glob_list[KEY_DEBUG] << endl << kpm_debug << endl;
   return counter;
   
 }
@@ -519,9 +539,11 @@ void computeBundleAdjustment(double pose_list[][6], std::vector<Array3dContainer
   ceres::Solver::Summary summary;
   options.minimizer_progress_to_stdout=true;
   
+  int memf = -1;
+  
   
   //per ogni frame
-  for(int f = 0; f < numeroFotogrammi; f++){
+  for(int f = 1; f < numeroFotogrammi; f++){
     map<int, KeyPointMatch> frame = frames[f];
     std::map<int, KeyPointMatch>::iterator it;
     for (it = frame.begin(); it != frame.end(); ++it) {
@@ -539,18 +561,51 @@ void computeBundleAdjustment(double pose_list[][6], std::vector<Array3dContainer
 	cost->AddParameterBlock( 3 );
 	cost->SetNumResiduals( 4 );
 	problem.AddResidualBlock(cost, 0, pose_list[f], pt3d_glob_list[key].values);
+	
+	if (key == KEY_DEBUG){
+	  
+	  Matrix3d Rtemp;
+	  Vector3d ttemp;
+	  ceres::AngleAxisToRotationMatrix(pose_list[f], ceres::ColumnMajorAdapter3x3((double *)Rtemp.data())); //ColumnMajorAdapter3x3 è un adapter da Eigen a Ceres per le matrici
+	  ttemp.x() = pose_list[f][3];
+	  ttemp.y() = pose_list[f][4];
+	  ttemp.z() = pose_list[f][5];
+	  cout << "KEY_DEBUG " << KEY_DEBUG << " frame: " <<  f << ", pose R:\n" << Rtemp << ",\n pose t:\n" << ttemp <<  ",\n global 3d Points: " << pt3d_glob_list[KEY_DEBUG] << endl;
+	  double pred[4];
+	  BundleAdjustmentModel::predict(pose_list[f], pt3d_glob_list[KEY_DEBUG].values, kpm, pred);
+	  cout << "predicted lx ly rx ry : " <<  pred[0] << " " <<  pred[1] << " " <<  pred[2] << " "<<  pred[3] << endl;
+	  
+	  memf  = f;
+	}
       }
       
     }
   }
     
   ceres::Solve(options, &problem, &summary);
+  
+ 
+  Matrix3d Rtemp;
+  Vector3d ttemp;
+  ceres::AngleAxisToRotationMatrix(pose_list[memf], ceres::ColumnMajorAdapter3x3((double *)Rtemp.data())); //ColumnMajorAdapter3x3 è un adapter da Eigen a Ceres per le matrici
+  ttemp.x() = pose_list[memf][3];
+  ttemp.y() = pose_list[memf][4];
+  ttemp.z() = pose_list[memf][5];
+  cout << "KEY_DEBUG " << KEY_DEBUG << " frame: " <<  memf << ", pose R:\n" << Rtemp << ",\n pose t:\n" << ttemp <<  ",\n global 3d Points: " << pt3d_glob_list[KEY_DEBUG] << endl;
+  double pred[4];
+  BundleAdjustmentModel::predict(pose_list[memf], pt3d_glob_list[KEY_DEBUG].values, frames[memf][KEY_DEBUG], pred);
+  cout << "predicted lx ly rx ry : " <<  pred[0] << " " <<  pred[1] << " " <<  pred[2] << " "<<  pred[3] << endl;
+	  
+	
 
 }
 
-void write3dPoint(std::vector<Array3dContainer> & pt3d_glob_list, int puntiUnici){
+void write3dPoint(std::vector<Array3dContainer> & pt3d_glob_list, int puntiUnici, int index){
   std::ofstream m_out3d;
-  m_out3d.open("/tmp/output3dGlobal.txt");
+  if (index == 0)
+    m_out3d.open("/tmp/output3dGlobal.txt");
+  else
+    m_out3d.open("/tmp/output3dGlobal_correct.txt");
   
   for (int i = 0; i<puntiUnici; i++){
     
@@ -559,6 +614,31 @@ void write3dPoint(std::vector<Array3dContainer> & pt3d_glob_list, int puntiUnici
   
   m_out3d.close();
 }
+
+void writePoses(double pose_list[][6], int numeroFotogrammi){
+  std::ofstream m_out;
+  m_out.open("/tmp/outputPose_correct.txt");
+  
+  Matrix3d R;
+  Vector3d t;
+  for (int f = 0; f<numeroFotogrammi; f++){
+    
+    
+    ceres::AngleAxisToRotationMatrix(pose_list[f], ceres::ColumnMajorAdapter3x3((double *)R.data())); //ColumnMajorAdapter3x3 è un adapter da Eigen a Ceres per le matrici
+    t.x() = pose_list[f][3];
+    t.y() = pose_list[f][4];
+    t.z() = pose_list[f][5];
+    
+    //R = R.transpose().eval();
+    //t = -R*t;
+    for(int i=0;i<3;++i) {
+      m_out << R(i,0) << ' ' << R(i,1) << ' ' << R(i,2) << ' ' << t[i] << ' ';
+    }
+    m_out << std::endl;
+  }
+  m_out.close();
+}
+
 
 
 
