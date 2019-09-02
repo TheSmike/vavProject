@@ -23,6 +23,15 @@ const double u0 = 607.193; //centro ottico x
 const double v0 = 185.216; //centro ottico y
 const double b = 0.537166; //distanza tra le 2 camere
 
+int max_pt_value;
+int max_abs_x;
+int max_abs_y;
+int max_abs_z; 
+
+int tollerance_x;
+int tollerance_y;
+int tollerance_z;
+
 //f = 718.856; u0 = 607.193; v0 = 185.216; b = 0.537166
 
 

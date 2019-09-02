@@ -207,7 +207,7 @@ int main(int argc, char **argv) {
     Ri.setIdentity();
     ti.setConstant(0.0);
     t.setConstant(0.0);
-    m_out.open("/tmp/ms.txt");
+    m_out.open("/tmp/outputPose.txt");
     m_out_camera.open("/tmp/ms2.txt");
 
     
@@ -249,10 +249,13 @@ int main(int argc, char **argv) {
 	ti_list.push_back(ti);
 	
 	
-	ceres::RotationMatrixToAngleAxis(Ri.data(), pose_list[f]);
-	pose_list[f][3] = ti[0];
-	pose_list[f][4] = ti[1];
-	pose_list[f][5] = ti[2];
+	Matrix3d Rt = Ri.transpose().eval();
+	Vector3d t_inv = -Rt * ti;
+	
+	ceres::RotationMatrixToAngleAxis(Rt.data(), pose_list[f]);
+	pose_list[f][3] = t_inv[0];
+	pose_list[f][4] = t_inv[1];
+	pose_list[f][5] = t_inv[2];
 	
 	
       }
@@ -354,6 +357,7 @@ void computeRotationAndTranslation(std::map<int, KeyPointMatch> & cur, std::map<
   ceres::Problem problem;
   ceres::Solver::Options options;
   ceres::Solver::Summary summary;
+  options.num_threads = 4;
   //options.minimizer_progress_to_stdout=true;
   
    
@@ -481,8 +485,13 @@ int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & t
 	
 	
 
-	Matrix3d Rt = Ri_list[f].transpose().eval();
-	Vector3d t_inv = -Rt * ti_list[f];
+// 	Matrix3d Rt = Ri_list[f].transpose().eval();
+// 	Vector3d t_inv = -Rt * ti_list[f];
+// 	
+	Matrix3d Rt = Ri_list[f].eval();
+	Vector3d t_inv = ti_list[f];
+	
+
 	double angleAxis[3];
 	double pt3d_glob[3];
 	
@@ -493,6 +502,13 @@ int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & t
 	pt3d_glob[0] += t_inv.x();
 	pt3d_glob[1] += t_inv.y();
 	pt3d_glob[2] += t_inv.z();
+	
+	if (abs(pt3d_glob[0]) > max_abs_x)
+	  max_abs_x = abs(pt3d_glob[0]);
+	if (abs(pt3d_glob[1]) > max_abs_y)
+	  max_abs_y = abs(pt3d_glob[1]);
+	if (abs(pt3d_glob[2]) > max_abs_z)
+	  max_abs_z = abs(pt3d_glob[2]);
       
 	pt3d_glob_list[key] = Array3dContainer(pt3d_glob[0], pt3d_glob[1], pt3d_glob[2]);
     
@@ -527,6 +543,12 @@ int compute3DGlobal(std::vector <Matrix3d> & Ri_list, std::vector <Vector3d> & t
        << "skipped  " << notCompute << " 3D global points\n";
   
  cout << "frame : " << frame_debug << ", key " << KEY_DEBUG << " : FINAL value --> " << pt3d_glob_list[KEY_DEBUG] << endl << kpm_debug << endl;
+ 
+ tollerance_x = max_abs_x + max_abs_x * (10/100);
+ tollerance_y = max_abs_y + max_abs_y * (10/100);
+ tollerance_z = max_abs_z + max_abs_z * (10/100);
+ 
+ cout << endl << "max abs coord values ==> " << max_abs_x << " " << max_abs_y << " " << max_abs_z << endl;
   return counter;
   
 }
@@ -538,17 +560,19 @@ void computeBundleAdjustment(double pose_list[][6], std::vector<Array3dContainer
   ceres::Solver::Options options;
   ceres::Solver::Summary summary;
   options.minimizer_progress_to_stdout=true;
+  options.max_num_iterations = 200;
+  options.num_threads = 4;
   
   int memf = -1;
   
   
   //per ogni frame
-  for(int f = 1; f < numeroFotogrammi; f++){
-    map<int, KeyPointMatch> frame = frames[f];
-    std::map<int, KeyPointMatch>::iterator it;
+  for(int f = 0; f < numeroFotogrammi; f++){
+    const map<int, KeyPointMatch> & frame = frames[f];
+    std::map<int, KeyPointMatch>::const_iterator it;
     for (it = frame.begin(); it != frame.end(); ++it) {
       int key = it->first;
-      KeyPointMatch & kpm = it->second;
+      const KeyPointMatch & kpm = it->second;
 	
       if(pt3d_glob_list[key].isNull == false){
 	
@@ -561,6 +585,9 @@ void computeBundleAdjustment(double pose_list[][6], std::vector<Array3dContainer
 	cost->AddParameterBlock( 3 );
 	cost->SetNumResiduals( 4 );
 	problem.AddResidualBlock(cost, 0, pose_list[f], pt3d_glob_list[key].values);
+	if (f == 0) {
+	  problem.SetParameterBlockConstant(pose_list[f]);
+	}
 	
 	if (key == KEY_DEBUG){
 	  
@@ -629,8 +656,8 @@ void writePoses(double pose_list[][6], int numeroFotogrammi){
     t.y() = pose_list[f][4];
     t.z() = pose_list[f][5];
     
-    //R = R.transpose().eval();
-    //t = -R*t;
+    R = R.transpose().eval();
+    t = -R*t;
     for(int i=0;i<3;++i) {
       m_out << R(i,0) << ' ' << R(i,1) << ' ' << R(i,2) << ' ' << t[i] << ' ';
     }

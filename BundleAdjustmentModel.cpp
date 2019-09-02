@@ -4,7 +4,7 @@ class BundleAdjustmentModel {
     
 public:
   
-  BundleAdjustmentModel(KeyPointMatch & kpm) : kpm(kpm)
+  BundleAdjustmentModel(const KeyPointMatch & _kpm) : kpm(_kpm)
   {
   }
   
@@ -18,7 +18,7 @@ public:
 //     xp[2] = T(prevPt.pt3d.z());
 
     T xc[3];
-    //ruoto il punto previous in punto current
+    //ruoto il punto globale in punto current
     ceres::AngleAxisRotatePoint(pose, pt3d_glob, xc);
     //aggiungo la parte traslativa
     xc[0] += pose[3]; 
@@ -50,6 +50,12 @@ public:
       residuals[1] = ( T(kpm.left.y()) - pred[1]) ;
       residuals[2] = ( T(kpm.right.x()) - pred[2]) ;
       residuals[3] = ( T(kpm.right.y()) - pred[3]) ;
+      
+      if(abs(pt3d_glob[0]) > (double)tollerance_x  || abs(pt3d_glob[1]) > (double)tollerance_y || abs(pt3d_glob[2]) > (double)tollerance_z){
+	for(int i = 0; i < 4; i++){
+	  residuals[i] += T((double)10000);
+	}
+      }
       
       return true;
     
