@@ -16,7 +16,9 @@
 #include <float.h>
 
 #include <ceres/ceres.h>
+#include <ceres/loss_function.h>
 #include <ceres/rotation.h>
+
 
 #include "BundleAdjustmentModel.cpp"
 #include "Array3dContainer.cpp"
@@ -28,6 +30,8 @@ using namespace Eigen;
 static const int DISPARITY_THRESHOLD = 1;
 int KEY_DEBUG = 5;
 int BREAK_PT;
+
+std::ofstream m_out_counter;
 
 //functions declariation
 void compute3DCameraPoints(std::map<int, KeyPointMatch> & frame);
@@ -187,125 +191,142 @@ int main(int argc, char **argv) {
     cout << frames[1][1] << endl;
     
     
-//     std::map<int, KeyPointMatch> & cur = NULL;
-//     std::map<int, KeyPointMatch> & prev = NULL;
-    Eigen::Matrix3d R;
-    Eigen::Vector3d t;
-    Eigen::Matrix3d Ri;
-    Eigen::Vector3d ti;
-    /// file di serializzazione output
-    std::ofstream m_out, m_out_camera;
+    std::string fileName2;
+    std::stringstream ss2;
+    ss2 << "/tmp/output_counters.txt";
+    fileName2 = ss2.str();
+    m_out_counter.open(fileName2.c_str());
     
-    //std::vector <Matrix3d> Rc_list;
-    //std::vector <Vector3d> tc_list;
-    std::vector <Matrix3d> Ri_list;
-    std::vector <Vector3d> ti_list;
-    double pose_list[numeroFotogrammi][6];
+  
+    for(th_outlier = 2; th_outlier <= 8; th_outlier += 2){
     
-    
-    R.setIdentity();
-    Ri.setIdentity();
-    ti.setConstant(0.0);
-    t.setConstant(0.0);
-    m_out.open("/tmp/outputPose.txt");
-    m_out_camera.open("/tmp/ms2.txt");
+  //     std::map<int, KeyPointMatch> & cur = NULL;
+  //     std::map<int, KeyPointMatch> & prev = NULL;
+      Eigen::Matrix3d R;
+      Eigen::Vector3d t;
+      Eigen::Matrix3d Ri;
+      Eigen::Vector3d ti;
+      /// file di serializzazione output
+      std::ofstream m_out, m_out_camera;
+      
+      //std::vector <Matrix3d> Rc_list;
+      //std::vector <Vector3d> tc_list;
+      std::vector <Matrix3d> Ri_list;
+      std::vector <Vector3d> ti_list;
+      double pose_list[numeroFotogrammi][6];
+      
+      
+      R.setIdentity();
+      Ri.setIdentity();
+      ti.setConstant(0.0);
+      t.setConstant(0.0);
+      
+      std::string fileName;
+      std::stringstream ss;
+      ss << "/tmp/outputPose_th" << th_outlier << ".txt" ;
+      fileName = ss.str();
+      
+      m_out.open(fileName.c_str());
+      //m_out_camera.open("/tmp/cameraPose.txt");
 
-    
-    t1 = time(NULL);
-    cout << "Start computation ..." << endl;
-    //elaborazione per ogni fotogramma
-    for(int f = 0; f < numeroFotogrammi; f++){
       
-      if (f % 100 == 0)
-	cout << "iterazione " << f << endl;
-      
-      std::map<int, KeyPointMatch> & cur = frames[f];
-      //converto i punti attuali in coordinate camera 3d tramite la disparità
-      compute3DCameraPoints(cur);
-      
-      if(f==0){
-	cout << cur[0] << endl << cur[1] << endl;
-	Ri_list.push_back(Ri);
-	ti_list.push_back(ti);
-	ceres::RotationMatrixToAngleAxis(Ri.data(), pose_list[f]);
-	pose_list[f][3] = ti[0];
-	pose_list[f][4] = ti[1];
-	pose_list[f][5] = ti[2];
+      t1 = time(NULL);
+      cout << "Start computation ..." << endl;
+      //elaborazione per ogni fotogramma
+      for(int f = 0; f < numeroFotogrammi; f++){
+	
+	if (f % 100 == 0)
+	  cout << "iterazione " << f << endl;
+	
+	std::map<int, KeyPointMatch> & cur = frames[f];
+	//converto i punti attuali in coordinate camera 3d tramite la disparità
+	compute3DCameraPoints(cur);
+	
+	if(f==0){
+	  cout << cur[0] << endl << cur[1] << endl;
+	  Ri_list.push_back(Ri);
+	  ti_list.push_back(ti);
+	  ceres::RotationMatrixToAngleAxis(Ri.data(), pose_list[f]);
+	  pose_list[f][3] = ti[0];
+	  pose_list[f][4] = ti[1];
+	  pose_list[f][5] = ti[2];
+	}
+	
+	//l'elaborazione inizia dal secondo frame 
+	if (f > 0){
+	  std::map<int, KeyPointMatch> & prev = frames[f-1];
+	  
+	  //quanti match tra prev e cur
+	  computeRotationAndTranslation(cur, prev, R, t);
+	  
+	  ti = Ri * t + ti;
+	  Ri = Ri * R;
+	  
+	  //Rc_list.push_back(R);
+	  //tc_list.push_back(t);
+	  Ri_list.push_back(Ri);
+	  ti_list.push_back(ti);
+	  
+	  
+	  Matrix3d Rt = Ri.transpose().eval();
+	  Vector3d t_inv = -Rt * ti;
+	  
+	  ceres::RotationMatrixToAngleAxis(Rt.data(), pose_list[f]);
+	  pose_list[f][3] = t_inv[0];
+	  pose_list[f][4] = t_inv[1];
+	  pose_list[f][5] = t_inv[2];
+	  
+	  
+	}
+	    
+	for(int i=0;i<3;++i) {
+	  m_out << Ri(i,0) << ' ' << Ri(i,1) << ' ' << Ri(i,2) << ' ' << ti[i] << ' ';
+	  //m_out_camera << R(i,0) << ' ' << R(i,1) << ' ' << R(i,2) << ' ' << t[i] << ' ';
+	}
+	m_out << std::endl;
+	//m_out_camera << std::endl;
+	  
+	if (f == BREAK_PT)
+	  break;
       }
       
-      //l'elaborazione inizia dal secondo frame 
-      if (f > 0){
-	std::map<int, KeyPointMatch> & prev = frames[f-1];
-	
-	//quanti match tra prev e cur
-	computeRotationAndTranslation(cur, prev, R, t);
-	
-	ti = Ri * t + ti;
-	Ri = Ri * R;
-	
-	//Rc_list.push_back(R);
-	//tc_list.push_back(t);
-	Ri_list.push_back(Ri);
-	ti_list.push_back(ti);
-	
-	
-	Matrix3d Rt = Ri.transpose().eval();
-	Vector3d t_inv = -Rt * ti;
-	
-	ceres::RotationMatrixToAngleAxis(Rt.data(), pose_list[f]);
-	pose_list[f][3] = t_inv[0];
-	pose_list[f][4] = t_inv[1];
-	pose_list[f][5] = t_inv[2];
-	
-	
-      }
-           
-      for(int i=0;i<3;++i) {
-	m_out << Ri(i,0) << ' ' << Ri(i,1) << ' ' << Ri(i,2) << ' ' << ti[i] << ' ';
-	m_out_camera << R(i,0) << ' ' << R(i,1) << ' ' << R(i,2) << ' ' << t[i] << ' ';
-      }
-      m_out << std::endl;
-      m_out_camera << std::endl;
-	
-      if (f == BREAK_PT)
-	break;
-    }
-    
-    t2 = time(NULL);
-    cout << "end computation!" << endl;
-    cout << "execution time: " << (t2-t1) << " s" << endl;
-    
-    m_out.close();
-    m_out_camera.close();
-    
+      t2 = time(NULL);
+      cout << "end computation!" << endl;
+      cout << "execution time: " << (t2-t1) << " s" << endl;
+      
+      m_out.close();
+      //m_out_camera.close();
+      
 
-    cout << "Print 3dPoint global to file ... \n";
-    //cout << "not in function " << frames << endl;
-    cout << puntiUnici << endl;
-    
-    
-    std::vector<Array3dContainer> pt3d_glob_list;
-    pt3d_glob_list.resize(puntiUnici, Array3dContainer());
-    
-    int ptsNumber = compute3DGlobal(Ri_list, ti_list, frames, puntiUnici, numeroFotogrammi, pt3d_glob_list);
-    write3dPoint(pt3d_glob_list, ptsNumber, 0);
-    cout << "printed \n";
+      cout << "Print 3dPoint global to file ... \n";
+      //cout << "not in function " << frames << endl;
+      cout << puntiUnici << endl;
+      
+      
+      std::vector<Array3dContainer> pt3d_glob_list;
+      pt3d_glob_list.resize(puntiUnici, Array3dContainer());
+      
+      int ptsNumber = compute3DGlobal(Ri_list, ti_list, frames, puntiUnici, numeroFotogrammi, pt3d_glob_list);
+      write3dPoint(pt3d_glob_list, ptsNumber, 0);
+      cout << "printed \n";
 
-    
-    
-    t1 = time(NULL);
-    cout << "Start computation BA ..." << endl;
-        //void computeBundleAdjustment(double pose_list[][6], double pt3d_glob_list[][3], std::map<int, KeyPointMatch> & frames[], int numeroFotogrammi, int puntiUnici);
-    computeBundleAdjustment(pose_list, pt3d_glob_list, frames, numeroFotogrammi, ptsNumber); //TODO 
-    write3dPoint(pt3d_glob_list, ptsNumber, 1);
-    writePoses(pose_list, numeroFotogrammi);
-    
-    
-    t2 = time(NULL);
-    cout << "end computation BA!" << endl;
-    cout << "execution time: " << (t2-t1) << " s" << endl;
+      
+      
+      t1 = time(NULL);
+      cout << "Start computation BA ..." << endl;
+      computeBundleAdjustment(pose_list, pt3d_glob_list, frames, numeroFotogrammi, ptsNumber); 
+      write3dPoint(pt3d_glob_list, ptsNumber, 1);
+      writePoses(pose_list, numeroFotogrammi);
+      
+      
+      t2 = time(NULL);
+      cout << "end computation BA!" << endl;
+      cout << "execution time: " << (t2-t1) << " s" << endl;
         
     
+    }
+    
+    m_out_counter.close();
     cout << "------------  END  ------------" << endl;
     return 0;
     
@@ -388,9 +409,9 @@ void computeRotationAndTranslation(std::map<int, KeyPointMatch> & cur, std::map<
 //     cout << "prev[" << i << "] = " << prevList[i] << endl;
 //   }
   
-  for(int k=0;k<2;++k) {
+  for(int k=0;k<4;++k) {
     
-    double th = (k==0) ? 576. : 8.;
+    double th = (k==0) ? 576. : (double)th_outlier;
     int inliers = 0;
 
     for(int i = 0; i < prevList.size(); ++i) {
@@ -565,6 +586,9 @@ void computeBundleAdjustment(double pose_list[][6], std::vector<Array3dContainer
   
   int memf = -1;
   
+  ceres::LossFunction* cauchy = new ceres::CauchyLoss(1.5);
+  ceres::LossFunctionWrapper* loss_function = new ceres::LossFunctionWrapper(cauchy, ceres::TAKE_OWNERSHIP);
+  
   
   //per ogni frame
   for(int f = 0; f < numeroFotogrammi; f++){
@@ -584,6 +608,7 @@ void computeBundleAdjustment(double pose_list[][6], std::vector<Array3dContainer
 	cost->AddParameterBlock( 6 ); 
 	cost->AddParameterBlock( 3 );
 	cost->SetNumResiduals( 4 );
+	//problem.AddResidualBlock(cost, loss_function, pose_list[f], pt3d_glob_list[key].values);
 	problem.AddResidualBlock(cost, 0, pose_list[f], pt3d_glob_list[key].values);
 	if (f == 0) {
 	  problem.SetParameterBlockConstant(pose_list[f]);
@@ -608,7 +633,8 @@ void computeBundleAdjustment(double pose_list[][6], std::vector<Array3dContainer
       
     }
   }
-    
+  
+
   ceres::Solve(options, &problem, &summary);
   
  
@@ -622,17 +648,44 @@ void computeBundleAdjustment(double pose_list[][6], std::vector<Array3dContainer
   double pred[4];
   BundleAdjustmentModel::predict(pose_list[memf], pt3d_glob_list[KEY_DEBUG].values, frames[memf][KEY_DEBUG], pred);
   cout << "predicted lx ly rx ry : " <<  pred[0] << " " <<  pred[1] << " " <<  pred[2] << " "<<  pred[3] << endl;
-	  
-	
-
+  
+  
+  int countErrorPts = 0;
+  for(int f = 0; f < numeroFotogrammi; f++){
+    const map<int, KeyPointMatch> & frame = frames[f];
+    std::map<int, KeyPointMatch>::const_iterator it;
+    for (it = frame.begin(); it != frame.end(); ++it) {
+      int key = it->first;
+      const KeyPointMatch & kpm = it->second;
+      if(pt3d_glob_list[key].isNull == false){
+	double pred[4];
+	BundleAdjustmentModel::predict(pose_list[f], pt3d_glob_list[key].values, kpm, pred);
+	//double residual = abs(kpm.left.x() - pred[0]) + abs(kpm.left.y() - pred[1]) + abs(kpm.right.x() - pred[2]) + abs( kpm.right.y() - pred[3]);
+	double residual = std::pow(kpm.left.x()  - pred[0], 2) + 
+			  std::pow(kpm.left.y()  - pred[1], 2) +
+			  std::pow(kpm.right.x() - pred[2], 2) +
+			  std::pow(kpm.right.y() - pred[3], 2);
+	if (residual > 1.5)
+	  countErrorPts++;
+      }
+    }
+  }
+  
+  cout << "th_outlier = " << th_outlier << " --> errorPts = " << countErrorPts << endl;
+  m_out_counter << "th_outlier = " << th_outlier << " --> errorPts = " << countErrorPts << endl;
 }
 
 void write3dPoint(std::vector<Array3dContainer> & pt3d_glob_list, int puntiUnici, int index){
   std::ofstream m_out3d;
+  std::string fileName;
+  std::stringstream ss;
   if (index == 0)
-    m_out3d.open("/tmp/output3dGlobal.txt");
+    ss << "/tmp/output3dGlobal_th" << th_outlier << ".txt";
   else
-    m_out3d.open("/tmp/output3dGlobal_correct.txt");
+    ss <<  "/tmp/output3dGlobal_correct_th" <<  th_outlier << ".txt";
+  fileName = ss.str();
+  
+  m_out3d.open(fileName.c_str());
   
   for (int i = 0; i<puntiUnici; i++){
     
@@ -644,7 +697,12 @@ void write3dPoint(std::vector<Array3dContainer> & pt3d_glob_list, int puntiUnici
 
 void writePoses(double pose_list[][6], int numeroFotogrammi){
   std::ofstream m_out;
-  m_out.open("/tmp/outputPose_correct.txt");
+  std::string fileName;
+  std::stringstream ss;
+  ss << "/tmp/outputPose_correct_th" << th_outlier << ".txt";
+  fileName = ss.str();
+  
+  m_out.open(fileName.c_str());
   
   Matrix3d R;
   Vector3d t;

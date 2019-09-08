@@ -32,6 +32,9 @@ int tollerance_x;
 int tollerance_y;
 int tollerance_z;
 
+int th_outlier = 8;
+
+
 //f = 718.856; u0 = 607.193; v0 = 185.216; b = 0.537166
 
 
